@@ -1,0 +1,10 @@
+vent
+# Ignorar arquivos de banco de dados e logs pesados
+postgres_data/
+airflow/logs/
+__pycache__/
+*.pyc
+
+# Ignorar pastas virtuais do Python (se houver)
+venv/
+.env

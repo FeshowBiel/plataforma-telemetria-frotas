@@ -1,6 +1,7 @@
-version: '3.8'
-
 services:
+  # ==========================================
+  # 1. CAMADA DE ARMAZENAMENTO E MENSAGERIA
+  # ==========================================
   postgres_db:
     image: postgres:15-alpine
     container_name: frotas_postgres
@@ -34,72 +35,119 @@ services:
     image: rabbitmq:3-management-alpine
     container_name: frotas_rabbitmq
     restart: always
-    environment:
-      RABBITMQ_DEFAULT_USER: admin
-      RABBITMQ_DEFAULT_PASS: admin_password
     ports:
       - "5672:5672"
       - "15672:15672"
     networks:
       - frotas_network
 
+  # ==========================================
+  # 2. CAMADA DE APLICAÇÃO (BACKEND E WORKER)
+  # ==========================================
   api_backend:
-    build: 
-      context: ./backend
+    build: ./backend
     container_name: frotas_api
     restart: always
     ports:
       - "8000:8000"
-    environment:
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_USER=admin
-      - RABBITMQ_PASS=admin_password
     depends_on:
       - rabbitmq
+      - postgres_db
     networks:
       - frotas_network
 
   worker:
-    build:
-      context: ./worker
+    build: ./worker
     container_name: frotas_worker
     restart: always
-    environment:
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_USER=admin
-      - RABBITMQ_PASS=admin_password
-      - POSTGRES_HOST=postgres_db
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=admin_password
-      - POSTGRES_DB=frotas_db
     depends_on:
       - rabbitmq
       - postgres_db
     networks:
       - frotas_network
 
-  # ---> NOSSO DASHBOARD (Agora alinhado corretamente dentro de services) <---
+  # ==========================================
+  # 3. CAMADA DE VISUALIZAÇÃO (FRONTEND)
+  # ==========================================
   frontend_dashboard:
-    build:
-      context: ./frontend
+    build: ./frontend
     container_name: frotas_frontend
     restart: always
     ports:
       - "8501:8501"
-    environment:
-      - POSTGRES_HOST=postgres_db
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=admin_password
-      - POSTGRES_DB=frotas_db
     depends_on:
       - postgres_db
     networks:
       - frotas_network
 
-# As chaves globais abaixo ficam totalmente à esquerda (sem indentação)
-volumes:
-  postgres_data:
+  # ==========================================
+  # 4. CAMADA DE TRANSFORMAÇÃO (DBT)
+  # ==========================================
+  dbt_service:
+    build: ./data_warehouse
+    container_name: frotas_dbt
+    command: tail -f /dev/null
+    volumes:
+      - ./data_warehouse:/usr/app/dbt
+    networks:
+      - frotas_network
 
+  # ==========================================
+  # 5. CAMADA DE ORQUESTRAÇÃO (AIRFLOW + DBT NATIVO)
+  # ==========================================
+  airflow-webserver:
+    image: apache/airflow:2.7.1-python3.11
+    container_name: frotas_airflow_webserver
+    restart: always
+    depends_on:
+      - postgres_db
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://admin:admin_password@postgres_db:5432/frotas_db
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - _PIP_ADDITIONAL_REQUIREMENTS=dbt-postgres
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10mb"
+        max-file: "5"
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./data_warehouse:/usr/app/dbt
+    ports:
+      - "8080:8080"
+    command: webserver
+    networks:
+      - frotas_network
+
+  airflow-scheduler:
+    image: apache/airflow:2.7.1-python3.11
+    container_name: frotas_airflow_scheduler
+    restart: always
+    depends_on:
+      - postgres_db
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://admin:admin_password@postgres_db:5432/frotas_db
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - _PIP_ADDITIONAL_REQUIREMENTS=dbt-postgres
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./airflow/logs:/opt/airflow/logs
+      - ./airflow/plugins:/opt/airflow/plugins
+      - ./data_warehouse:/usr/app/dbt
+    command: scheduler
+    networks:
+      - frotas_network
+
+# ==========================================
+# CONFIGURAÇÕES GERAIS DE REDE E VOLUMES
+# ==========================================
 networks:
   frotas_network:
     driver: bridge
+
+volumes:
+  postgres_data:

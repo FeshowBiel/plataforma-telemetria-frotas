@@ -1,0 +1,13 @@
+frotas_dw:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: postgres_db
+      port: 5432
+      user: admin
+      password: admin_password
+      dbname: frotas_db
+      schema: analytics
+      threads: 4
+      keepalives_idle: 0

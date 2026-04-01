@@ -1,0 +1,29 @@
+# arquivo: data_warehouse/frotas_dw/models/schema.yml
+version: 2
+
+models:
+  - name: stg_telemetria
+    description: "Tabela de telemetria limpa com dados do JSON extraídos em colunas."
+    columns:
+      - name: id_leitura
+        description: "Chave primária única de cada leitura."
+        tests:
+          - unique
+          - not_null
+
+      - name: veiculo_id
+        description: "Placa ou ID do cavalo mecânico."
+        tests:
+          - not_null
+
+      - name: velocidade_kmh
+        description: "Velocidade do veículo. Não pode ser nula."
+        tests:
+          - not_null
+
+      - name: carga_perigosa_status
+        description: "Status das válvulas e integridade da carga química."
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['NORMAL', 'ATENCAO_VALVULA', 'VAZAMENTO_DETECTADO']

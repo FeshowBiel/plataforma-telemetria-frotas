@@ -1,0 +1,10 @@
+# arquivo: data_warehouse/frotas_dw/models/sources.yml
+version: 2
+
+sources:
+  - name: sistema_operacional
+    database: frotas_db
+    schema: public
+    tables:
+      - name: telemetria_frota
+        description: "Tabela bruta populada pelo Worker do RabbitMQ."
